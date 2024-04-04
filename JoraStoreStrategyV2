@@ -1,0 +1,650 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © JORA STORE 
+
+//@version=5
+strategy("Jora Store Strategy", overlay=true, calc_on_every_tick = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, initial_capital = 100000, currency = currency.TRY, commission_type = strategy.commission.cash_per_order, commission_value = 0.02)
+
+
+// Hacim onayı göstergesi seçimi
+selectedVolumeIndicator = input.session("KUSKUS", options=["WAE", "KUSKUS"], title="For Volume Confirm ? ", inline="Volume", group="Indicator Selection")
+
+// Trend göstergesi seçimi
+selectedTrendIndicator = input.session("T3", options=["T3", "SuperTrend"], title="Trend Indicator ? ", inline="Trend Indicator", group="Indicator Selection")
+
+// Trend Onayı göstergesi
+selectedTrendConfirmIndicator = input.session("ADX", options = ["ADX","GCV","NO"],title = "For Trend Power Confirm ?", inline = "Trend Confirm", group = "Indicator Selection" )
+
+// Sadece Long pozisyon
+onlyLongPosition = input.bool(false,"Only Long Position ?",group = "Indicator Selection")
+
+
+// Kar ve Zarar Alma Yerleri
+selectedProfitMethod = input.session("ATR", options = ["ATR"],title = "Profit Method ?  ", group = "Indicator Selection",inline = "tp and sl method")
+use2Tp= input.bool(true,title = "2. TP ?", group = "Indicator Selection", inline = "tp and sl method")
+tp2Method = input.session("T3", options = ["T3", "SuperTrend"], title = "2. TP Method", group = "Indicator Selection", inline = "tp and sl method")
+
+atrPeriodBands = input.int(title = "ATR Period", defval = 14, minval = 1, group = "Indicator Selection")
+reward = input.float(1.5,title = "Reward ?",group = "Indicator Selection" )
+stopAtr = input.float(2.5,title = "Stop ATR ?",group = "Indicator Selection")
+
+
+
+// T3 kullanımı
+useT3LongEma = input.bool(true, " Use T3 Long EMA?", inline="T3", group="T3") 
+useT3MidEma =  input.bool(true, " Use T3 Middle EMA?", inline="T3", group="T3") 
+useT3ShortEma =  input.bool(true, " Use T3 Short EMA?", inline="T3", group="T3") 
+
+// // EMA kullanımı
+// useLongEma = input.bool(false, " Use Long EMA?", inline="EMA", group="EMA") 
+// useMiddleEma = input.bool(false, " Use Middle EMA?", inline="EMA", group="EMA") 
+// useShortEma = input.bool(false, " Use Short EMA?", inline="EMA", group="EMA") 
+
+useLongEma = false
+useMiddleEma = false
+useShortEma = false
+
+// Uzun, orta ve kısa EMA uzunlukları
+// longEmaLength =  input.int(200, "Long EMA Length", group="EMA") 
+// middleEmaLength =  input.int(100, "Middle EMA Length", group="EMA") 
+// shortEmaLength = input.int(50, "Short EMA Length", group="EMA") 
+
+longEmaLength = 200
+middleEmaLength = 100
+shortEmaLength = 50
+
+// Hacim onayı göstergesine göre kullanım
+useWAE = selectedVolumeIndicator == "WAE"
+useKuskus = selectedVolumeIndicator == "KUSKUS"
+
+
+// EMA Calculate
+emaShort = ta.ema(close, longEmaLength)
+emaMedium = ta.ema(close, middleEmaLength)
+emaLong = ta.ema(close, shortEmaLength)
+
+// EMA çizimleri
+// plot(emaShort, color=color.blue, linewidth=2, title="Kısa EMA")
+// plot(emaMedium, color=color.red, linewidth=2, title="Orta EMA")
+// plot(emaLong, color=color.green, linewidth=2, title="Uzun EMA")
+
+// SUPERTREND 12,3
+
+useSuperTrend1 = input.bool(true, "Use SuperTrend 1 ?", inline = "SuperTrend", group = "SUPERTREND")
+useSuperTrend2 = input.bool(true, "Use SuperTrend 2 ? ", inline = "SuperTrend", group = "SUPERTREND")
+
+atrPeriod = input.int(12, 'SUPERTREND 1 : ATR Length',inline = "SUPERTREND 1",group="SUPERTREND")
+factor = input.int(3, 'SUPERTREND 1 : Factor',inline = "SUPERTREND 1",group="SUPERTREND")
+
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+
+bodyMiddle = plot((open + close) / 2, display=display.none)
+upTrend = plot(direction < 0 ? supertrend : na, 'Up Trend 1', color=color.new(color.green, 0), style=plot.style_linebr,display = display.none)
+downTrend = plot(direction < 0 ? na : supertrend, 'Down Trend 1', color=color.new(color.red, 0), style=plot.style_linebr,display = display.none)
+
+// SUPERTREND 11,2
+
+atrPeriod2 = input.int(11, 'SUPERTREND 2 : ATR Length ',inline = "SUPERTREND 2",group="SUPERTREND") 
+factor2 = input.int(2, 'SUPERTREND 2 : Factor ',inline = "SUPERTREND 2",group="SUPERTREND")
+
+[supertrend2, direction2] = ta.supertrend(factor2, atrPeriod2)
+
+bodyMiddle2 = plot((open + close) / 2, display=display.none)
+upTrend2 = plot(direction2 < 0 ? supertrend2 : na, 'Up Trend 2 ', color=color.new(color.green, 0), style=plot.style_linebr,display = display.none)
+downTrend2 = plot(direction2 < 0 ? na : supertrend2, 'Down Trend 2', color=color.new(color.red, 0), style=plot.style_linebr,display = display.none)
+
+
+// T3 EMA fonksiyonu
+t3EMA(xPrice, Length) =>
+    xe1 = ta.ema(xPrice, Length)
+    xe2 = ta.ema(xe1, Length)
+    xe3 = ta.ema(xe2, Length)
+    xe4 = ta.ema(xe3, Length)
+    xe5 = ta.ema(xe4, Length)
+    xe6 = ta.ema(xe5, Length)
+    b = 0.7
+    c1 = -b * b * b
+    c2 = 3 * b * b + 3 * b * b * b
+    c3 = -6 * b * b - 3 * b - 3 * b * b * b
+    c4 = 1 + 3 * b + b * b * b + 3 * b * b
+    nT3Average = c1 * xe6 + c2 * xe5 + c3 * xe4 + c4 * xe3
+    nT3Average
+
+// Uzun, orta ve kısa T3 uzunluklarını giriş olarak al
+longLength =input.int(200, "Long T3 EMA Length",group = "T3") 
+middleLength =  input.int(100, "Middle T3 EMA Length",group = "T3") 
+shortLength =  input.int(25, "Short T3 EMA Length",group = "T3") 
+
+// T3 göstergilerini hesapla
+nT3Average_Long = t3EMA(close, longLength)
+nT3Average_Middle = t3EMA(close, middleLength)
+nT3Average_Short = t3EMA(close, shortLength)
+
+// Plot göstergeler
+plot(nT3Average_Long, color=color.rgb(14, 78, 239), title="T3 (Long)", linewidth=2,display = display.none)
+plot(nT3Average_Middle, color=color.rgb(254, 254, 255), title="T3 Middle", linewidth=2,display = display.none)
+plot(nT3Average_Short, color=color.rgb(215, 116, 3),title="T3 Short", linewidth=2,display = display.none)
+
+
+// Kuskus Starlight + Ema
+
+//parameters
+rangee = 30
+pricesmoothing = 0.3
+indexsmoothing = 0.3
+emaLength = 20
+highesthigh = ta.highest(high,rangee)
+lowestlow = ta.lowest(low,rangee)
+
+var float greatestrange = na
+var float extmapbuffer = na
+var float smoothedlocation = na
+var float extmapbuffer1 = na
+
+greatestrange := (highesthigh-lowestlow)!=0?(highesthigh-lowestlow):greatestrange[1]
+midprice = (high+low)/2
+
+//pricelocation
+pricelocation = 2*((midprice-lowestlow)/greatestrange)-1
+
+//smoothing of pricelocation
+extmapbuffer := pricesmoothing*nz(extmapbuffer[1]) + (1-pricesmoothing)*pricelocation
+smoothedlocation := (extmapbuffer>0.99?0.99:(extmapbuffer<-0.99?-0.99:extmapbuffer))!=1?(extmapbuffer>0.99?0.99:(extmapbuffer<-0.99?-0.99:extmapbuffer)):smoothedlocation[1]
+
+//fisherlocation
+fishindex = math.log((1+smoothedlocation)/(1-smoothedlocation))
+
+//smoothingoffishindex
+extmapbuffer1 := indexsmoothing*nz(extmapbuffer1[1])+(1-indexsmoothing)*fishindex
+smoothedfish = extmapbuffer1
+
+ma = ta.ema(smoothedfish,emaLength)
+
+//plot(smoothedfish,color=smoothedfish>0?color.green:color.red,linewidth=3,style=plot.style_histogram)
+//plot(ma, color=color.yellow, linewidth=2)
+
+// Garman Klas Volatility
+
+length = 14
+//
+// GCV hesaplaması
+gcv = math.sqrt((bar_index/length) * math.sum(0.5 * math.pow(math.log(high/low),2) - (2*math.log(2)-1) * math.pow(math.log(close/open),2),length))
+
+// GCV'nin ortalaması
+gcv_avg = ta.sma(gcv, length)
+
+// GCV ve ortalamasını çiz
+//plot(gcv, color=color.rgb(194, 12, 12), title="GCV")
+//plot(gcv_avg, color=color.white, title="GCV Average")
+
+// ADX 
+
+adxlen = 14
+dilen = 14
+dirmov(len) =>
+	up = ta.change(high)
+	down = -ta.change(low)
+	plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+	minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+	truerange = ta.rma(ta.tr, len)
+	plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+	minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+	[plus, minus]
+adx(dilen, adxlen) =>
+	[plus, minus] = dirmov(dilen)
+	sum = plus + minus
+	adx = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+sig = adx(dilen, adxlen)
+//plot(sig, color=color.red, title="ADX")
+
+
+// Waddah Attar 
+
+sensitivity = 150
+fastLength=20
+slowLength=40
+channelLength=20
+mult=2.0
+
+DEAD_ZONE = nz(ta.rma(ta.tr(true),100)) * 3.7
+
+calc_macd(source, fastLength, slowLength) =>
+	fastMA = ta.ema(source, fastLength)
+	slowMA = ta.ema(source, slowLength)
+	fastMA - slowMA
+
+calc_BBUpper(source, length, mult) => 
+	basis = ta.sma(source, length)
+	dev = mult * ta.stdev(source, length)
+	basis + dev
+
+calc_BBLower(source, length, mult) => 
+	basis = ta.sma(source, length)
+	dev = mult * ta.stdev(source, length)
+	basis - dev
+
+t1 = (calc_macd(close, fastLength, slowLength) - calc_macd(close[1], fastLength, slowLength))*sensitivity
+
+e1 = (calc_BBUpper(close, channelLength, mult) - calc_BBLower(close, channelLength, mult))
+
+trendUp = (t1 >= 0) ? t1 : 0
+trendDown = (t1 < 0) ? (-1*t1) : 0
+
+//plot(trendUp, style=plot.style_columns, linewidth=1, color=(trendUp<trendUp[1])?color.lime:color.green, transp=45, title="UpTrend")
+//plot(trendDown, style=plot.style_columns, linewidth=1, color=(trendDown<trendDown[1])?color.orange:color.red, transp=45, title="DownTrend")
+//plot(e1, style=plot.style_line, linewidth=2, color=#A0522D, title="ExplosionLine")
+//plot(DEAD_ZONE, color=color.blue, linewidth=1, style=plot.style_cross, title="DeadZoneLine")
+
+// ATR Bands
+
+// Inputs
+
+// srcUpper = close
+// srcLower = close
+//atrMultiplierUpper = input.float(title = "ATR Multiplier Upper", defval = 2.5,group = "ATR")
+//atrMultiplierLower = input.float(title = "ATR Multiplier Lower", defval = 2.5,group = "ATR")
+
+// ATR
+
+
+// Plotting
+//plot(srcUpper + atr * atrMultiplierUpper, color = color.white)
+//plot(srcLower - atr * atrMultiplierLower, color = color.white)
+
+// atrUpperBand = srcUpper + atr * atrMultiplierUpper
+// atrLowerBand = srcLower - atr * atrMultiplierLower
+
+// Strategy Rules
+
+
+
+
+// var bool longCondition = na
+// var bool kuskusLongCondition = na
+// var bool waeLongCondition = na
+
+t3LongCondition() =>
+    var bool t3LongCond = na
+    // T3 uzun EMA, orta EMA ve kısa EMA kullanılıyorsa
+    if (useT3LongEma and useT3MidEma and useT3ShortEma)
+        t3LongCond := nT3Average_Short > nT3Average_Middle and nT3Average_Middle > nT3Average_Long and close > nT3Average_Short
+
+    // T3 uzun EMA ve orta EMA kullanılıyorsa
+    if (useT3LongEma and useT3MidEma and not useT3ShortEma)
+        t3LongCond := nT3Average_Middle > nT3Average_Long and close > nT3Average_Middle
+
+    // T3 uzun EMA ve kısa EMA kullanılıyorsa
+    if (useT3LongEma and not useT3MidEma and useT3ShortEma)
+        t3LongCond := nT3Average_Short > nT3Average_Long and close > nT3Average_Short
+
+    // Orta EMA ve kısa EMA kullanılıyorsa
+    if (not useT3LongEma and useT3MidEma and useT3ShortEma)
+        t3LongCond := nT3Average_Short > nT3Average_Middle and close > nT3Average_Short
+
+    // Sonucu döndür
+    t3LongCond
+
+t3ShortCondition() =>
+    var bool t3ShortCond = na
+
+    // T3 uzun EMA, orta EMA ve kısa EMA kullanılıyorsa
+    if (useT3LongEma and useT3MidEma and useT3ShortEma)
+        t3ShortCond := nT3Average_Short < nT3Average_Middle and nT3Average_Middle < nT3Average_Long and close < nT3Average_Short
+
+    // T3 uzun EMA ve orta EMA kullanılıyorsa
+    if (useT3LongEma and useT3MidEma and not useT3ShortEma)
+        t3ShortCond := nT3Average_Middle < nT3Average_Long and close < nT3Average_Middle
+
+    // T3 uzun EMA ve kısa EMA kullanılıyorsa
+    if (useT3LongEma and not useT3MidEma and useT3ShortEma)
+        t3ShortCond := nT3Average_Short < nT3Average_Long and close < nT3Average_Short
+
+    // Orta EMA ve kısa EMA kullanılıyorsa
+    if (not useT3LongEma and useT3MidEma and useT3ShortEma)
+        t3ShortCond := nT3Average_Short < nT3Average_Middle and close < nT3Average_Short
+
+    // Sonucu döndür
+    t3ShortCond
+
+
+emaLongCondition () =>
+    var bool emaLongCond = na
+    //  uzun EMA, orta EMA ve kısa EMA kullanılıyorsa
+    if (useLongEma and useMiddleEma and useShortEma)
+        emaLongCond := emaShort > emaMedium and emaMedium > emaLong and close > emaShort
+    //  uzun EMA ve orta EMA kullanılıyorsa
+    if (useLongEma and useMiddleEma and not useShortEma)
+        emaLongCond := emaMedium > emaLong and close > emaMedium
+
+    //  uzun EMA ve kısa EMA kullanılıyorsa
+    if (useLongEma and not useMiddleEma and useShortEma)
+        emaLongCond :=  emaShort > emaLong and close > emaShort
+
+    // Orta EMA ve kısa EMA kullanılıyorsa
+    if (not useLongEma and useMiddleEma and useShortEma)
+        emaLongCond :=  emaShort > emaMedium and close > emaShort
+    // Sonucu döndür
+    emaLongCond
+
+emaShortCondition () =>
+    var bool emaShortCond = na
+    // Kısa EMA, orta EMA ve uzun EMA kullanılıyorsa
+    if (useShortEma and useMiddleEma and useLongEma)
+        emaShortCond := emaShort < emaMedium and emaMedium < emaLong and close < emaShort
+
+    // Kısa EMA ve orta EMA kullanılıyorsa
+    if (useShortEma and useMiddleEma and not useLongEma)
+        emaShortCond := emaShort < emaMedium and close < emaShort
+
+    // Kısa EMA ve uzun EMA kullanılıyorsa
+    if (useShortEma and not useMiddleEma and useLongEma)
+        emaShortCond := emaShort < emaLong and close < emaShort
+
+    // Orta EMA ve uzun EMA kullanılıyorsa
+    if (not useShortEma and useMiddleEma and useLongEma)
+        emaShortCond := emaMedium < emaLong and close < emaShort
+
+    // Sonucu döndür
+    emaShortCond
+
+
+superTrendLongCondition() =>
+    var bool superTrendLongCond = na
+
+    if (useSuperTrend1 and useSuperTrend2)
+        superTrendLongCond := direction < 0 and direction2 < 0
+    if (useSuperTrend1 and not useSuperTrend2)
+        superTrendLongCond := direction < 0 
+    if (not useSuperTrend1 and useSuperTrend2)
+        superTrendLongCond := direction2 < 0
+    
+    superTrendLongCond
+
+
+
+superTrendShortCondition() =>
+    var bool superTrendShortCond = na
+
+    if (useSuperTrend1 and useSuperTrend2)
+        superTrendShortCond:= direction > 0 and direction2 > 0
+    if (useSuperTrend1 and not useSuperTrend2)
+        superTrendShortCond := direction > 0 
+    if (not useSuperTrend1 and useSuperTrend2)
+        superTrendShortCond := direction2 > 0
+
+    superTrendShortCond
+
+
+
+waeLongCondition() =>
+    var bool waeLongCond = na
+    // UpTrend çubukları "DownTrend" çubuklarından büyükse
+    if(trendUp > trendDown and trendUp > e1 and trendUp > DEAD_ZONE)
+        waeLongCond := true
+    else 
+        waeLongCond := false
+
+    waeLongCond
+
+waeShortCondition() =>
+    var bool waeShortCond = na
+
+    if( trendDown > trendUp and trendDown > e1 and trendDown > DEAD_ZONE)
+        waeShortCond := true
+    else
+        waeShortCond := false
+
+    waeShortCond
+
+
+
+kuskusLongCondition() =>
+    var bool kuskusLongCond = na
+
+    if(smoothedfish > 0 and smoothedfish > ma)
+        kuskusLongCond := true
+    else
+        kuskusLongCond := false
+
+    kuskusLongCond
+
+kuskusShortCondition() =>
+    var bool kuskusShortCond = na
+
+    if(smoothedfish < 0 and smoothedfish < ma)
+        kuskusShortCond := true
+    else
+        kuskusShortCond := false
+
+    kuskusShortCond
+
+gcvLongandShortCondition() => 
+    var bool gcvLongandShortCond = na
+
+    if (gcv > gcv_avg)
+        gcvLongandShortCond := true
+    else
+        gcvLongandShortCond := false
+
+    gcvLongandShortCond
+
+adxLongandShortCondition() => 
+    var bool adxLongandShortCond = na
+
+    if(sig>25)
+        adxLongandShortCond := true
+    else
+        adxLongandShortCond := false
+    
+    adxLongandShortCond
+
+
+// TP and SL Methods
+
+// longTPandSLCalculate(longEntryPrice,stopAtr,reward, atrPeriodBands) =>
+//     var float longTP = na
+//     var float longSL = na
+
+//     atr = ta.atr(atrPeriodBands)
+
+//     longSL := (close - atr * stopAtr)
+
+//     longTP := close + (close - longSL) * reward
+
+//     [longSL,longTP]
+
+
+// shortTPandSLCalculate(shortEntryPrice, stopAtr, reward, atrPeriodBands) =>
+//     var float shortTP = na
+//     var float shortSL = na
+
+//     atr = ta.atr(atrPeriodBands)
+    
+//     shortSL := (shortEntryPrice + atr * stopAtr)
+
+//     shortTP := shortEntryPrice - (shortSL - shortEntryPrice) * reward
+
+//     [shortSL, shortTP]
+
+
+// LONG CONDITIONS
+
+
+var bool longCondition = na
+var bool shortCondition = na
+var float longEntryPrice = na
+var float shortEntryPrice = na
+
+
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "T3" and selectedTrendConfirmIndicator == "ADX")
+    longCondition := waeLongCondition() and t3LongCondition() and adxLongandShortCondition()
+    shortCondition := waeShortCondition() and t3ShortCondition() and adxLongandShortCondition()
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "EMA" and selectedTrendConfirmIndicator == "ADX")
+    longCondition := waeLongCondition() and emaLongCondition () and adxLongandShortCondition()
+    shortCondition := waeShortCondition() and emaShortCondition () and adxLongandShortCondition()
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "SuperTrend" and selectedTrendConfirmIndicator == "ADX")
+    longCondition := waeLongCondition() and superTrendLongCondition() and adxLongandShortCondition()
+    shortCondition := waeShortCondition() and superTrendShortCondition() and adxLongandShortCondition()
+
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "T3" and selectedTrendConfirmIndicator == "GCV")
+    longCondition := waeLongCondition() and t3LongCondition() and gcvLongandShortCondition()
+    shortCondition := waeShortCondition() and t3ShortCondition() and gcvLongandShortCondition()
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "EMA" and selectedTrendConfirmIndicator == "GCV")
+    longCondition := waeLongCondition() and emaLongCondition () and gcvLongandShortCondition()
+    shortCondition := waeShortCondition() and emaShortCondition () and gcvLongandShortCondition()
+
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "SuperTrend" and selectedTrendConfirmIndicator == "GCV")
+    longCondition := waeLongCondition() and superTrendLongCondition() and gcvLongandShortCondition()
+    shortCondition := waeShortCondition() and superTrendShortCondition() and gcvLongandShortCondition()
+
+
+
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "T3" and selectedTrendConfirmIndicator == "NO")
+    longCondition := waeLongCondition() and t3LongCondition()
+    shortCondition := waeShortCondition() and t3ShortCondition()
+
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "EMA" and selectedTrendConfirmIndicator == "NO")
+    longCondition := waeLongCondition() and emaLongCondition ()
+    shortCondition := waeShortCondition() and emaShortCondition ()
+
+if (selectedVolumeIndicator == "WAE" and selectedTrendIndicator == "SuperTrend" and selectedTrendConfirmIndicator == "NO")
+    longCondition := waeLongCondition() and superTrendLongCondition()
+    shortCondition := waeShortCondition() and superTrendShortCondition()
+
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "T3" and selectedTrendConfirmIndicator == "ADX")
+    longCondition := kuskusLongCondition() and t3LongCondition() and adxLongandShortCondition()
+    shortCondition := kuskusShortCondition() and t3ShortCondition() and adxLongandShortCondition()
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "EMA" and selectedTrendConfirmIndicator == "ADX" )
+    longCondition := kuskusLongCondition() and emaLongCondition () and adxLongandShortCondition()
+    shortCondition := kuskusShortCondition() and emaShortCondition () and adxLongandShortCondition()
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "SuperTrend" and selectedTrendConfirmIndicator == "ADX")
+    longCondition := kuskusLongCondition() and superTrendLongCondition() and adxLongandShortCondition()
+    shortCondition := kuskusShortCondition() and superTrendShortCondition() and adxLongandShortCondition()
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "T3" and selectedTrendConfirmIndicator == "GCV")
+    longCondition := kuskusLongCondition() and t3LongCondition() and gcvLongandShortCondition()
+    shortCondition := kuskusShortCondition() and t3ShortCondition() and gcvLongandShortCondition()
+
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "EMA" and selectedTrendConfirmIndicator == "GCV" )
+    longCondition := kuskusLongCondition() and emaLongCondition () and gcvLongandShortCondition()
+    shortCondition := kuskusShortCondition() and emaShortCondition () and gcvLongandShortCondition()
+
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "SuperTrend" and selectedTrendConfirmIndicator == "GCV")
+    longCondition := kuskusLongCondition() and superTrendLongCondition() and gcvLongandShortCondition()
+    shortCondition := kuskusShortCondition() and superTrendShortCondition() and gcvLongandShortCondition()
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "T3" and selectedTrendConfirmIndicator == "NO")
+    longCondition := kuskusLongCondition() and t3LongCondition()
+    shortCondition := kuskusShortCondition() and t3ShortCondition()
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "EMA" and selectedTrendConfirmIndicator == "NO")
+    longCondition := kuskusLongCondition() and emaLongCondition ()
+    shortCondition := kuskusShortCondition() and emaShortCondition ()
+
+if (selectedVolumeIndicator == "KUSKUS" and selectedTrendIndicator == "SuperTrend" and selectedTrendConfirmIndicator == "NO")
+    longCondition := kuskusLongCondition() and superTrendLongCondition()
+    shortCondition := kuskusShortCondition() and superTrendShortCondition()
+
+
+// SHORT CONDITIONS
+
+
+
+
+// Uzun pozisyon için giriş koşulu
+var float longSL = na
+var float longTP = na
+var int tradeNumber = 0
+
+tp2Condition(position) =>
+    var bool cond = na
+    if(position == "Long")
+        if (tp2Method == "T3")
+            if(useT3ShortEma)
+                cond := ta.crossunder(close,nT3Average_Short)
+            if(not useShortEma and useMiddleEma)
+                cond := ta.crossunder(close,nT3Average_Middle)
+        else
+            if(useSuperTrend1 and useSuperTrend2)
+                cond := direction[1] < direction
+            if (not useSuperTrend1 and useSuperTrend2)
+                cond := direction2[1] < direction
+    
+    if(position == "Short")
+        if (tp2Method == "T3")
+            if(useT3ShortEma)
+                cond := ta.crossover(close,nT3Average_Short)
+            if(not useShortEma and useMiddleEma)
+                cond := ta.crossover(close,nT3Average_Middle)
+        else
+            if(useSuperTrend1 and useSuperTrend2)
+                cond := direction[1] < direction
+            if (not useSuperTrend1 and useSuperTrend2)
+                cond := direction2[1] < direction
+    cond
+atr = ta.atr(atrPeriodBands)
+
+if (longCondition and strategy.opentrades == 0)
+    strategy.entry("Long", strategy.long)
+    longSL := (close - atr * stopAtr)
+    longTP := close + (close - longSL) * reward
+    longEntryPrice := strategy.opentrades.entry_price(strategy.opentrades - 1)
+    tradeNumber := tradeNumber + 1
+    
+   // Stop Loss ve Take Profit seviyelerini birleştirilmiş metin olarak etiketlerle grafik üzerine yazdırma
+    labelText = "Long\nSL: " + str.tostring(longSL) + "\nTP: " + str.tostring(longTP)
+    label.new(x = bar_index, y = high, yloc = yloc.abovebar,text = labelText, style=label.style_label_down, color = color.green, textcolor = color.rgb(0, 0, 0))
+
+
+if (low <= longSL and strategy.position_size > 0)
+    strategy.close(id ="Long",comment = "Long SL" ,qty_percent = 100,immediately = true)
+if (use2Tp)
+    strategy.exit(id= "Long 1. TP" , from_entry="Long",limit = longTP, qty_percent = 50)
+else
+    strategy.exit(id= "Long TP" , from_entry="Long",limit = longTP, qty_percent = 100)
+
+if (use2Tp and tp2Condition("Long") and strategy.position_size > 0 )
+    if(strategy.openprofit > 0)
+        strategy.close(id="Long", comment ="Long 2. TP", qty_percent = 100)
+    else 
+        strategy.close(id="Long", comment ="Long SL", qty_percent = 100)
+
+
+
+// Kısa Pozisyon İçin giriş koşulu
+
+var float shortSL = na
+var float shortTP = na
+
+
+if (shortCondition and not onlyLongPosition and strategy.opentrades == 0)
+    strategy.entry("Short", strategy.short)
+    shortEntryPrice := strategy.opentrades.entry_price(strategy.opentrades - 1)
+    tradeNumber := tradeNumber + 1
+    shortSL := (close + atr * stopAtr)
+    shortTP := close - (shortSL - close) * reward
+
+    labelText = "Short\nSL: " + str.tostring(shortSL) + "\nTP: " + str.tostring(shortTP)
+    label.new(x = bar_index, y = close,yloc = yloc.belowbar, text = labelText, style=label.style_label_up, color = color.red, textcolor = color.rgb(0, 0, 0))
+
+
+if (high >= shortSL and strategy.position_size < 0)
+    strategy.close(id = "Short", comment = "Short SL", qty_percent = 100)
+
+if (use2Tp)
+    strategy.exit(id="Short 1. TP", from_entry="Short", limit=shortTP, qty_percent = 50)
+else
+    strategy.exit(id="Short TP", from_entry="Short", limit=shortTP, qty_percent = 100)
+
+
+if (use2Tp and tp2Condition("Short") and strategy.position_size < 0)
+    if(strategy.openprofit > 0)
+        strategy.close(id="Short", comment ="Short 2.TP", qty_percent = 100)
+    else 
+        strategy.close(id="Short", comment ="Short SL", qty_percent = 100)
+
+
